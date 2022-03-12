@@ -26,24 +26,18 @@ local get_master_node = function()
   return node
 end
 
-local get_root_node = function(node)
-  -- local node = ts_utils.get_node_at_cursor()
-  local root = ts_utils.get_root_for_node(node)
-  return root
-end
+local open_pairs_list = {}
+local close_pairs_list = {}
 
 local init = function()
   local m_pairs = vim.bo.matchpairs
-  local open_list = {}
-  local close_list = {}
 
   for k, v in m_pairs:gmatch("([^,:]+):([^,:]+)") do
-    open_list[k] = v
-    close_list[v] = k
+    open_pairs_list[k] = v
+    close_pairs_list[v] = k
   end
 
   M.inited = true
-  return open_list, close_list
 end
 
 M.select = function()
@@ -77,44 +71,79 @@ local find_close_pair = function(pairs_count, pairs_list, key)
   end
 end
 
-local get_char = function()
-  local node = ts_utils.get_node_at_cursor()
-  local open_pairs_list, close_pairs_list = init()
-
-  local current_line_num = vim.api.nvim_win_get_cursor(0)[1]
-  local line_num = current_line_num
+local prev_lonely_pair = function(start_line, start_column, end_line, end_column)
+  local line_num = start_line
   local pairs_count = {}
 
-  while line_num > 0 do
+  while line_num > end_line do
     local line = vim.call("getline", line_num)
 
-    local last_pos = 0
-    if line_num == current_line_num then
-      last_pos = vim.call("col", ".") - 1
-    else
-      last_pos = vim.call("col", {line_num, "$"}) - 1
-    end
-
-    if last_pos == -1 then
-      goto continue
+    if line_num == start_line then
+      line = string.sub(line, 1, start_column)
     end
 
     for key in line:reverse():gmatch("(.)") do
       local found = find_open_pair(pairs_count, open_pairs_list, key)
       if found then
-        print(open_pairs_list[key])
         return open_pairs_list[key]
       end
       find_close_pair(pairs_count, close_pairs_list, key)
     end
 
-    ::continue::
     line_num = line_num - 1
   end
 end
 
+local next_lonely_pair = function(start_line, start_column, end_line, end_column)
+  local line_num = start_line
+  local pairs_count = {}
+
+  while line_num < end_line do
+    local line = vim.call("getline", line_num)
+
+    if line_num == start_line then
+      line = string.sub(line, start_column + 2)
+    end
+
+    for key in line:gmatch("(.)") do
+      local found = find_open_pair(pairs_count, close_pairs_list, key)
+      if found then
+        return close_pairs_list[key]
+      end
+      find_close_pair(pairs_count, open_pairs_list, key)
+    end
+
+    line_num = line_num + 1
+  end
+end
+
+local get_char = function()
+  local curr_line = vim.api.nvim_win_get_cursor(0)[1]
+  local curr_col = vim.api.nvim_win_get_cursor(0)[2]
+  local node = ts_utils.get_node_at_cursor()
+
+  -- Get quote character if the type of current node is 'string'.
+  if node:type():match("string") then
+    local start_line, start_col = node:start()
+    local quote_char = string.sub(vim.call("getline", start_line + 1), start_col + 1, start_col + 1)
+    return quote_char
+  end
+
+  local prev_lonely = prev_lonely_pair(curr_line, curr_col, 1, 0)
+  local next_lonely = next_lonely_pair(curr_line, curr_col, curr_line + 3, 0)
+  if close_pairs_list[prev_lonely] ~= next_lonely then
+    return prev_lonely
+  end
+end
+
 M.try_close = function()
+  if not M.inited then
+    init()
+    print("Initialize closing pairs")
+  end
+
   local char = get_char()
+  print(char)
 
   return char
 end
