@@ -1,30 +1,7 @@
 local ts_utils = require "nvim-treesitter.ts_utils"
+
 local M = {}
 M.inited = false
-
-local table_print = function(table)
-  for k, v in pairs(table) do
-    print(k .. ": " .. v)
-  end
-end
-
-local get_master_node = function()
-  local node = ts_utils.get_node_at_cursor()
-  if node == nil then
-    print("No treesitter node found.")
-  end
-
-  local start_row = node:start()
-  local parent = node:parent()
-  local root = ts_utils.get_root_for_node(node)
-
-  while (parent ~= nil and parent ~= root) do
-    node = parent
-    parent = node:parent()
-  end
-
-  return node
-end
 
 local open_pairs_list = {}
 local close_pairs_list = {}
@@ -40,15 +17,54 @@ local init = function()
   M.inited = true
 end
 
-M.select = function()
-  local node = get_master_node():prev_sibling()
-  local bufnr = vim.api.nvim_get_current_buf()
-  for n in node:iter_children() do
-    print(n)
+local get_master_node_range = function()
+  local node = ts_utils.get_node_at_cursor()
+  if node == nil then
+    start_line, start_col = 0, 0
+    end_line = vim.call("line", "$") - 1
+    end_col = vim.call("col", {end_line + 1, "$"}) - 1
+    return nil, start_line, start_col, end_line, end_col
   end
-  ts_utils.update_selection(bufnr, node)
+
+  local parent = node:parent()
+  local start_row = node:start()
+  local root = ts_utils.get_root_for_node(node)
+
+  while (parent ~= nil and parent ~= root) do
+    node = parent
+    parent = node:parent()
+  end
+
+  return node, node:range()
 end
 
+local get_lonely_quote = function(pre_node, curr_line, curr_column)
+  -- When in insert mode, ts_utils.get_node_at_cursor() is not working properly.
+  -- So we should get a column ahead by selecting from the parent node.
+  -- local parent = pre_node:parent()
+  local node = pre_node:named_descendant_for_range(curr_line - 1, curr_column - 1, curr_line - 1, curr_column - 1)
+  local curr_type = node:type()
+
+  -- Get quote character if the type of current node has abnormal string content.
+  if curr_type:match("string") or curr_type:match("ERROR") then
+    for i = 0, node:child_count() - 2, 1 do
+      local child = node:child(i)
+      local type = child:type()
+
+      local next_child = node:child(i + 1)
+      local next_type = next_child:type()
+      local next_text = ts_utils.get_node_text(next_child, 0)[1]
+
+      if type:match("string_content") then
+        if next_type ~= "string_end" or (next_type == "string_end" and next_text == "") then
+          local line, col = child:start()
+          local char = string.sub(vim.call("getline", line + 1), col, col)
+          return char
+        end
+      end
+    end
+  end
+end
 local find_open_pair = function(pairs_count, pairs_list, key)
   if pairs_list[key] ~= nil then
     if pairs_count[key] == nil or pairs_count[key] == 0 then
@@ -80,6 +96,8 @@ local prev_lonely_pair = function(start_line, start_column, end_line, end_column
 
     if line_num == start_line then
       line = string.sub(line, 1, start_column)
+    elseif line_num == end_line then
+      line = string.sub(line, end_column)
     end
 
     for key in line:reverse():gmatch("(.)") do
@@ -102,7 +120,9 @@ local next_lonely_pair = function(start_line, start_column, end_line, end_column
     local line = vim.call("getline", line_num)
 
     if line_num == start_line then
-      line = string.sub(line, start_column + 2)
+      line = string.sub(line, start_column + 1)
+    elseif line_num == end_line then
+      line = string.sub(line, 1, end_column)
     end
 
     for key in line:gmatch("(.)") do
@@ -117,35 +137,42 @@ local next_lonely_pair = function(start_line, start_column, end_line, end_column
   end
 end
 
-local get_char = function()
-  local curr_line = vim.api.nvim_win_get_cursor(0)[1]
-  local curr_col = vim.api.nvim_win_get_cursor(0)[2]
-  local node = ts_utils.get_node_at_cursor()
+local get_char = function(curr_line, curr_column)
+  local node, start_line, start_col, end_line, end_col = get_master_node_range()
 
-  -- Get quote character if the type of current node is 'string'.
-  if node:type():match("string") then
-    local start_line, start_col = node:start()
-    local quote_char = string.sub(vim.call("getline", start_line + 1), start_col + 1, start_col + 1)
-    return quote_char
+  -- Check quote character
+  if node ~= nil then
+    local quote_char = get_lonely_quote(node, curr_line, curr_column)
+    if quote_char ~= nil then
+      return quote_char
+    end
   end
 
-  local prev_lonely = prev_lonely_pair(curr_line, curr_col, 1, 0)
-  local next_lonely = next_lonely_pair(curr_line, curr_col, curr_line + 3, 0)
+  -- Check match pair
+  local prev_lonely = prev_lonely_pair(curr_line, curr_column, start_line + 1, start_col + 1)
+  local next_lonely = next_lonely_pair(curr_line, curr_column, end_line + 1, end_col + 1)
   if close_pairs_list[prev_lonely] ~= next_lonely then
     return prev_lonely
+  elseif open_pairs_list[next_lonely] ~= prev_lonely then
+    return next_lonely
   end
+  return ";"
 end
 
 M.try_close = function()
   if not M.inited then
     init()
-    print("Initialize closing pairs")
   end
 
-  local char = get_char()
-  print(char)
+  local curr_line = vim.api.nvim_win_get_cursor(0)[1]
+  local curr_col = vim.api.nvim_win_get_cursor(0)[2]
+  local char = get_char(curr_line, curr_col)
 
-  return char
+  local mode = vim.api.nvim_get_mode()["mode"]
+  if mode == "i" then
+    vim.api.nvim_buf_set_text(0, curr_line - 1, curr_col, curr_line - 1, curr_col, {char})
+    vim.api.nvim_win_set_cursor(0, {curr_line, curr_col + 1})
+  end
 end
 
 return M
