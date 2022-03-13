@@ -1,11 +1,28 @@
 local ts_utils = require "nvim-treesitter.ts_utils"
-local u = require "utils"
 
 local M = {}
 M.inited = false
 
 local open_pairs_list = {}
 local close_pairs_list = {}
+
+local print_table = function(table)
+  for k, v in pairs(table) do
+    print(k .. ": " .. v)
+  end
+end
+
+local print_node = function(node, show_child)
+  print("Current node type: " .. node:type())
+  M.print_table(ts_utils.get_node_text(node, 0))
+  if show_child then
+    print("Child: ")
+    for ch in node:iter_children() do
+      print("Type: " .. ch:type())
+      M.print_table(ts_utils.get_node_text(ch, 0))
+    end
+  end
+end
 
 local init = function()
   local m_pairs = vim.bo.matchpairs
