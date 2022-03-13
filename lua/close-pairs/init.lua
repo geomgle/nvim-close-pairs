@@ -60,7 +60,6 @@ local get_lonely_quote = function(pre_node, curr_line, curr_column)
         next_type = next_child:type()
         next_text = ts_utils.get_node_text(next_child, 0)[1]
       end
-      -- end
 
       if type:match("string_content") then
         if next_type ~= "string_end" or (next_type == "string_end" and next_text == "") then
@@ -164,7 +163,6 @@ local get_char = function(curr_line, curr_column)
     return ";"
   end
   -- local next_lonely = next_lonely_pair(curr_line, curr_column, end_line + 1, end_col + 1)
-  -- print(prev_lonely, next_lonely)
   -- if close_pairs_list[prev_lonely] ~= next_lonely then
   -- return prev_lonely
   -- elseif open_pairs_list[next_lonely] ~= prev_lonely then
