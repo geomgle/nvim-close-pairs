@@ -1,4 +1,5 @@
 local ts_utils = require "nvim-treesitter.ts_utils"
+local u = require "utils"
 
 local M = {}
 M.inited = false
@@ -47,13 +48,19 @@ local get_lonely_quote = function(pre_node, curr_line, curr_column)
 
   -- Get quote character if the type of current node has abnormal string content.
   if curr_type:match("string") or curr_type:match("ERROR") then
-    for i = 0, node:child_count() - 2, 1 do
+    for i = 0, node:child_count() - 1, 1 do
       local child = node:child(i)
       local type = child:type()
 
       local next_child = node:child(i + 1)
-      local next_type = next_child:type()
-      local next_text = ts_utils.get_node_text(next_child, 0)[1]
+
+      local next_type
+      local next_text
+      if next_child ~= nil then
+        next_type = next_child:type()
+        next_text = ts_utils.get_node_text(next_child, 0)[1]
+      end
+      -- end
 
       if type:match("string_content") then
         if next_type ~= "string_end" or (next_type == "string_end" and next_text == "") then
@@ -65,6 +72,7 @@ local get_lonely_quote = function(pre_node, curr_line, curr_column)
     end
   end
 end
+
 local find_open_pair = function(pairs_count, pairs_list, key)
   if pairs_list[key] ~= nil then
     if pairs_count[key] == nil or pairs_count[key] == 0 then
@@ -87,15 +95,15 @@ local find_close_pair = function(pairs_count, pairs_list, key)
   end
 end
 
-local prev_lonely_pair = function(start_line, start_column, end_line, end_column)
-  local line_num = start_line
+local prev_lonely_pair = function(curr_line, curr_column, end_line, end_column)
+  local line_num = curr_line
   local pairs_count = {}
 
   while line_num > end_line do
     local line = vim.call("getline", line_num)
 
-    if line_num == start_line then
-      line = string.sub(line, 1, start_column)
+    if line_num == curr_line then
+      line = string.sub(line, 1, curr_column)
     elseif line_num == end_line then
       line = string.sub(line, end_column)
     end
@@ -112,15 +120,15 @@ local prev_lonely_pair = function(start_line, start_column, end_line, end_column
   end
 end
 
-local next_lonely_pair = function(start_line, start_column, end_line, end_column)
-  local line_num = start_line
+local next_lonely_pair = function(curr_line, curr_column, end_line, end_column)
+  local line_num = curr_line
   local pairs_count = {}
 
   while line_num < end_line do
     local line = vim.call("getline", line_num)
 
-    if line_num == start_line then
-      line = string.sub(line, start_column + 1)
+    if line_num == curr_line then
+      line = string.sub(line, curr_column + 1)
     elseif line_num == end_line then
       line = string.sub(line, 1, end_column)
     end
@@ -149,14 +157,31 @@ local get_char = function(curr_line, curr_column)
   end
 
   -- Check match pair
-  local prev_lonely = prev_lonely_pair(curr_line, curr_column, start_line + 1, start_col + 1)
-  local next_lonely = next_lonely_pair(curr_line, curr_column, end_line + 1, end_col + 1)
-  if close_pairs_list[prev_lonely] ~= next_lonely then
+  local prev_lonely = prev_lonely_pair(curr_line, curr_column, start_line, start_col + 1)
+  if prev_lonely ~= nil then
     return prev_lonely
-  elseif open_pairs_list[next_lonely] ~= prev_lonely then
-    return next_lonely
+  else
+    return ";"
   end
-  return ";"
+  -- local next_lonely = next_lonely_pair(curr_line, curr_column, end_line + 1, end_col + 1)
+  -- print(prev_lonely, next_lonely)
+  -- if close_pairs_list[prev_lonely] ~= next_lonely then
+  -- return prev_lonely
+  -- elseif open_pairs_list[next_lonely] ~= prev_lonely then
+  -- return next_lonely
+  -- end
+  -- return ";"
+end
+
+M.send_original = function()
+  local curr_line = vim.api.nvim_win_get_cursor(0)[1]
+  local curr_col = vim.api.nvim_win_get_cursor(0)[2]
+
+  local mode = vim.api.nvim_get_mode()["mode"]
+  if mode == "i" then
+    vim.api.nvim_buf_set_text(0, curr_line - 1, curr_col, curr_line - 1, curr_col, {";"})
+    vim.api.nvim_win_set_cursor(0, {curr_line, curr_col + 1})
+  end
 end
 
 M.try_close = function()
