@@ -4,7 +4,8 @@ local M = {}
 
 M.inited = false
 local settings = {
-  mapping = ";"
+  mapping = ";",
+  mapping_original_key = "j;"
 }
 
 local open_pairs_list = {}
@@ -206,16 +207,15 @@ function M.setup(update)
   end
   vim.g.close_pairs_loaded = true
   settings = vim.tbl_deep_extend("force", settings, update or {})
-  local mapping = settings.mapping
   vim.api.nvim_set_keymap(
     "i",
-    mapping,
+    settings.mapping,
     '<cmd>lua require"close-pairs".try_close()<cr>',
     {noremap = true, silent = true}
   )
   vim.api.nvim_set_keymap(
     "i",
-    "j" .. mapping,
+    settings.mapping_original_key,
     '<cmd>lua require"close-pairs".send_original()<cr>',
     {noremap = true, silent = true}
   )
