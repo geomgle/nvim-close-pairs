@@ -115,10 +115,7 @@ local find_close_pair = function(pairs_count, pairs_list, key)
   end
 end
 
-local check_angled_brace = function()
-end
-
-local prev_lonely_pair = function(curr_line, curr_column, start_line, start_column)
+local prev_lonely_pair = function(node, curr_line, curr_column, start_line)
   local line_num = curr_line
   local pairs_count = {}
 
@@ -127,16 +124,51 @@ local prev_lonely_pair = function(curr_line, curr_column, start_line, start_colu
 
     if line_num == curr_line then
       line = string.sub(line, 1, curr_column)
-    elseif line_num == start_line then
-      line = string.sub(line, start_column)
     end
 
+    local off = 1
     for key in line:reverse():gmatch("(.)") do
+      -- Check validity of = character
+      if node ~= nil and key:match("=") then
+        local col = 0
+        if line_num == curr_line then
+          col = curr_column - off
+        else
+          col = vim.call("col", {line_num, "$"}) - 1 - off
+        end
+        local key_node = node:named_descendant_for_range(line_num - 1, col - 1, line_num - 1, col - 1)
+        if key_node:type():match("assign") or key_node:type():match("declar") then
+          goto found
+        else
+          off = off + 1
+          goto continue
+        end
+      end
+
+      -- Check validity of angled brace
+      if node ~= nil and key:match("[<>]") then
+        local col = 0
+        if line_num == curr_line then
+          col = curr_column - off
+        else
+          col = vim.call("col", {line_num, "$"}) - 1 - off
+        end
+        local key_node = node:named_descendant_for_range(line_num - 1, col - 1, line_num - 1, col - 1)
+        if key_node:type() == "binary_expression" or key_node:type() == "string" then
+          off = off + 1
+          goto continue
+        end
+      end
+
+      ::found::
       local found = find_open_pair(pairs_count, open_pairs_list, key)
       if found then
         return open_pairs_list[key]
       end
       find_close_pair(pairs_count, close_pairs_list, key)
+
+      off = off + 1
+      ::continue::
     end
 
     line_num = line_num - 1
@@ -155,7 +187,7 @@ local get_char = function(curr_line, curr_column)
   end
 
   -- Check match pair
-  local prev_lonely = prev_lonely_pair(curr_line, curr_column, start_line, start_col + 1)
+  local prev_lonely = prev_lonely_pair(node, curr_line, curr_column, start_line)
   if prev_lonely ~= nil then
     return prev_lonely
   else
