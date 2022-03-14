@@ -1,7 +1,11 @@
 local ts_utils = require "nvim-treesitter.ts_utils"
 
 local M = {}
+
 M.inited = false
+local settings = {
+  mapping = ";"
+}
 
 local open_pairs_list = {}
 local close_pairs_list = {}
@@ -14,12 +18,12 @@ end
 
 local print_node = function(node, show_child)
   print("Current node type: " .. node:type())
-  M.print_table(ts_utils.get_node_text(node, 0))
+  print_table(ts_utils.get_node_text(node, 0))
   if show_child then
     print("Child: ")
     for ch in node:iter_children() do
       print("Type: " .. ch:type())
-      M.print_table(ts_utils.get_node_text(ch, 0))
+      print_table(ts_utils.get_node_text(ch, 0))
     end
   end
 end
@@ -111,17 +115,20 @@ local find_close_pair = function(pairs_count, pairs_list, key)
   end
 end
 
-local prev_lonely_pair = function(curr_line, curr_column, end_line, end_column)
+local check_angled_brace = function()
+end
+
+local prev_lonely_pair = function(curr_line, curr_column, start_line, start_column)
   local line_num = curr_line
   local pairs_count = {}
 
-  while line_num > end_line do
+  while line_num > start_line do
     local line = vim.call("getline", line_num)
 
     if line_num == curr_line then
       line = string.sub(line, 1, curr_column)
-    elseif line_num == end_line then
-      line = string.sub(line, end_column)
+    elseif line_num == start_line then
+      line = string.sub(line, start_column)
     end
 
     for key in line:reverse():gmatch("(.)") do
@@ -133,31 +140,6 @@ local prev_lonely_pair = function(curr_line, curr_column, end_line, end_column)
     end
 
     line_num = line_num - 1
-  end
-end
-
-local next_lonely_pair = function(curr_line, curr_column, end_line, end_column)
-  local line_num = curr_line
-  local pairs_count = {}
-
-  while line_num < end_line do
-    local line = vim.call("getline", line_num)
-
-    if line_num == curr_line then
-      line = string.sub(line, curr_column + 1)
-    elseif line_num == end_line then
-      line = string.sub(line, 1, end_column)
-    end
-
-    for key in line:gmatch("(.)") do
-      local found = find_open_pair(pairs_count, close_pairs_list, key)
-      if found then
-        return close_pairs_list[key]
-      end
-      find_close_pair(pairs_count, open_pairs_list, key)
-    end
-
-    line_num = line_num + 1
   end
 end
 
@@ -179,13 +161,38 @@ local get_char = function(curr_line, curr_column)
   else
     return ";"
   end
-  -- local next_lonely = next_lonely_pair(curr_line, curr_column, end_line + 1, end_col + 1)
-  -- if close_pairs_list[prev_lonely] ~= next_lonely then
-  -- return prev_lonely
-  -- elseif open_pairs_list[next_lonely] ~= prev_lonely then
-  -- return next_lonely
-  -- end
-  -- return ";"
+end
+
+M.show_node = function()
+  local node = ts_utils.get_node_at_cursor()
+  print_node(node, true)
+end
+
+function M.setup(update)
+  if vim.g.close_pairs_loaded then
+    return
+  end
+  vim.g.close_pairs_loaded = true
+  settings = vim.tbl_deep_extend("force", settings, update or {})
+  local mapping = settings.mapping
+  vim.api.nvim_set_keymap(
+    "i",
+    mapping,
+    '<cmd>lua require"close-pairs".try_close()<cr>',
+    {noremap = true, silent = true}
+  )
+  vim.api.nvim_set_keymap(
+    "i",
+    "j" .. mapping,
+    '<cmd>lua require"close-pairs".send_original()<cr>',
+    {noremap = true, silent = true}
+  )
+  vim.api.nvim_set_keymap(
+    "n",
+    "<C-f>",
+    '<cmd>lua require"close-pairs".show_node()<cr>',
+    {noremap = true, silent = true}
+  )
 end
 
 M.send_original = function()
