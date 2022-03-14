@@ -197,6 +197,7 @@ local get_char = function(curr_line, curr_column)
 end
 
 M.show_node = function()
+  print("reload")
   local node = ts_utils.get_node_at_cursor()
   print_node(node, true)
 end
