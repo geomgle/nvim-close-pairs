@@ -11,28 +11,6 @@ local settings = {
 local open_pairs_list = {}
 local close_pairs_list = {}
 
-local print_table = function(table)
-  for k, v in pairs(table) do
-    print(k .. ": " .. v)
-  end
-end
-
-local print_node = function(node, show_child)
-  if node ~= nil then
-    print("Current node type: " .. node:type())
-    print_table(ts_utils.get_node_text(node, 0))
-    if show_child then
-      print("Child: ")
-      for ch in node:iter_children() do
-        print("Type: " .. ch:type())
-        print_table(ts_utils.get_node_text(ch, 0))
-      end
-    end
-  else
-    print("node is empty")
-  end
-end
-
 local init = function()
   local m_pairs = vim.bo.matchpairs
 
@@ -64,29 +42,6 @@ local get_master_node_range = function()
   return node, node:range()
 end
 
-local table_match = function(table, regex)
-  for _, v in pairs(table) do
-    if v:match(regex) then
-      return true
-    end
-  end
-
-  return false
-end
-
-_G.print_recursive = function(node)
-  if node == nil then
-    return nil
-  end
-
-  for i = 0, node:child_count() - 1, 1 do
-    local child = node:child(i)
-    print_node(child)
-
-    print_recursive(child)
-  end
-end
-
 M.check_string_node = function(node, curr_line, curr_col)
   for i = 0, node:child_count() - 1, 1 do
     local child = node:child(i)
@@ -100,7 +55,6 @@ M.check_string_node = function(node, curr_line, curr_col)
       local start_line, start_col, end_line, end_col = child:range()
       local char = string.sub(vim.call("getline", start_line + 1), start_col, start_col)
 
-      print(curr_line, end_line + 1, curr_col - 1, end_col)
       if curr_line ~= end_line + 1 or curr_col - 1 ~= end_col then
         return char
       end
@@ -228,11 +182,6 @@ local get_char = function(curr_line, curr_col)
   end
 end
 
-M.show_node = function()
-  local node = ts_utils.get_node_at_cursor()
-  print_node(node, true)
-end
-
 function M.setup(update)
   if vim.g.close_pairs_loaded then
     return
@@ -251,18 +200,14 @@ function M.setup(update)
     '<cmd>lua require"close-pairs".send_original()<cr>',
     {noremap = true, silent = true}
   )
-  vim.api.nvim_set_keymap("n", "<C-f>", '<cmd>lua require"close-pairs".show_node()<cr>', {noremap = false})
 end
 
 M.send_original = function()
   local curr_line = vim.api.nvim_win_get_cursor(0)[1]
   local curr_col = vim.api.nvim_win_get_cursor(0)[2]
 
-  local mode = vim.api.nvim_get_mode()["mode"]
-  if mode == "i" then
-    vim.api.nvim_buf_set_text(0, curr_line - 1, curr_col, curr_line - 1, curr_col, {";"})
-    vim.api.nvim_win_set_cursor(0, {curr_line, curr_col + 1})
-  end
+  vim.api.nvim_buf_set_text(0, curr_line - 1, curr_col, curr_line - 1, curr_col, {";"})
+  vim.api.nvim_win_set_cursor(0, {curr_line, curr_col + 1})
 end
 
 M.try_close = function()
@@ -273,12 +218,12 @@ M.try_close = function()
   local curr_line = vim.api.nvim_win_get_cursor(0)[1]
   local curr_col = vim.api.nvim_win_get_cursor(0)[2]
   local char = get_char(curr_line, curr_col)
+  local next_char = string.sub(vim.call("getline", curr_line), curr_col + 1, curr_col + 1)
 
-  local mode = vim.api.nvim_get_mode()["mode"]
-  if mode == "i" then
+  if char ~= next_char then
     vim.api.nvim_buf_set_text(0, curr_line - 1, curr_col, curr_line - 1, curr_col, {char})
-    vim.api.nvim_win_set_cursor(0, {curr_line, curr_col + 1})
   end
+  vim.api.nvim_win_set_cursor(0, {curr_line, curr_col + 1})
 end
 
 return M
