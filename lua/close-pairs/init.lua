@@ -26,8 +26,8 @@ local get_master_node_range = function()
   local node = ts_utils.get_node_at_cursor()
   if node == nil then
     local start_line, start_col = 0, 0
-    local end_line = vim.call("line", "$") - 1
-    local end_col = vim.call("col", {end_line + 1, "$"}) - 1
+    local end_line = vim.fn.line("$") - 1
+    local end_col = vim.fn.col({end_line + 1, "$"}) - 1
     return nil, start_line, start_col, end_line, end_col
   end
 
@@ -53,7 +53,7 @@ M.check_string_node = function(node, curr_line, curr_col)
 
     if type:match("string_content") then
       local start_line, start_col, end_line, end_col = child:range()
-      local char = string.sub(vim.call("getline", start_line + 1), start_col, start_col)
+      local char = string.sub(vim.fn.getline(start_line + 1), start_col, start_col)
 
       if curr_line ~= end_line + 1 or curr_col - 1 ~= end_col then
         return char
@@ -107,7 +107,7 @@ local prev_lonely_pair = function(node, curr_line, curr_col, start_line)
   local pairs_count = {}
 
   while line_num > start_line do
-    local line = vim.call("getline", line_num)
+    local line = vim.fn.getline(line_num)
 
     if line_num == curr_line then
       line = string.sub(line, 1, curr_col)
@@ -121,7 +121,7 @@ local prev_lonely_pair = function(node, curr_line, curr_col, start_line)
         if line_num == curr_line then
           col = curr_col - off
         else
-          col = vim.call("col", {line_num, "$"}) - 1 - off
+          col = vim.fn.col({line_num, "$"}) - 1 - off
         end
         local key_node = node:named_descendant_for_range(line_num - 1, col - 1, line_num - 1, col - 1)
         if key_node:type():match("assign") or key_node:type():match("declar") then
@@ -138,7 +138,7 @@ local prev_lonely_pair = function(node, curr_line, curr_col, start_line)
         if line_num == curr_line then
           col = curr_col - off
         else
-          col = vim.call("col", {line_num, "$"}) - 1 - off
+          col = vim.fn.col({line_num, "$"}) - 1 - off
         end
         local key_node = node:named_descendant_for_range(line_num - 1, col - 1, line_num - 1, col - 1)
         if key_node:type() == "binary_expression" or key_node:type() == "string" then
@@ -218,7 +218,7 @@ M.try_close = function()
   local curr_line = vim.api.nvim_win_get_cursor(0)[1]
   local curr_col = vim.api.nvim_win_get_cursor(0)[2]
   local char = get_char(curr_line, curr_col)
-  local next_char = string.sub(vim.call("getline", curr_line), curr_col + 1, curr_col + 1)
+  local next_char = string.sub(vim.fn.getline(curr_line), curr_col + 1, curr_col + 1)
 
   if char ~= next_char then
     vim.api.nvim_buf_set_text(0, curr_line - 1, curr_col, curr_line - 1, curr_col, {char})
