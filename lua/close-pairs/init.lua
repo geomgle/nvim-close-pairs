@@ -52,7 +52,6 @@ M.check_string_node = function(node, curr_line, curr_col)
       return nil
     end
     local type = child:type()
-    pn(child, true)
 
     if type:match("string_content") then
       local start_line, start_col, end_line, end_col = child:range()
