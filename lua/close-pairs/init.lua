@@ -1,12 +1,13 @@
 local ts_utils = require "nvim-treesitter.ts_utils"
-local pn = require("utils").print_node
-local pt = require("utils").print_table
+-- local pn = require("utils").print_node
+-- local pt = require("utils").print_table
 
 local M = {}
 
 M.inited = false
 
 local settings = {
+  -- In my terminal, Ctrl-<CR> send € key.
   mapping = "€"
 }
 
