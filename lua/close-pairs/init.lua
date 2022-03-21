@@ -1,12 +1,13 @@
 local ts_utils = require "nvim-treesitter.ts_utils"
+-- local pn = require("utils").print_node
+-- local pt = require("utils").print_table
 
 local M = {}
 
 M.inited = false
 
 local settings = {
-  mapping = ";",
-  mapping_original_key = "j;"
+  mapping = "€"
 }
 
 local open_pairs_list = {}
@@ -49,7 +50,6 @@ M.check_string_node = function(node, curr_line, curr_col)
     if child == nil then
       return nil
     end
-
     local type = child:type()
 
     if type:match("string_content") then
@@ -59,24 +59,24 @@ M.check_string_node = function(node, curr_line, curr_col)
       if curr_line ~= end_line + 1 or curr_col - 1 ~= end_col then
         return char
       end
+    elseif type:match('["\'`]') and ts_utils.get_previous_node(child, true, true) == nil then
+      return ts_utils.get_node_text(child)[1]
     end
 
     M.check_string_node(child, curr_line, curr_col)
   end
 end
 
-local get_lonely_quote = function(node, curr_line, curr_col)
+local get_lonely_quote = function(pre_node, curr_line, curr_col)
   -- When in insert mode, ts_utils.get_node_at_cursor() is not working properly.
   -- So we should get a column ahead by selecting from the parent node.
-  -- local parent = pre_node:parent()
+  local node = pre_node:named_descendant_for_range(curr_line - 1, curr_col - 1, curr_line - 1, curr_col - 1)
   local curr_type = node:type()
 
-  -- Get quote character if the type of current node has abnormal string content.
-  if curr_type:match("string") or curr_type:match("ERROR") then
-    local quote = M.check_string_node(node, curr_line, curr_col)
-    if quote ~= nil then
-      return quote
-    end
+  local quote = M.check_string_node(node, curr_line, curr_col)
+
+  if quote ~= nil then
+    return quote
   end
 end
 
@@ -115,7 +115,8 @@ local prev_lonely_pair = function(node, curr_line, curr_col, start_line)
 
     local off = 1
     for key in line:reverse():gmatch("(.)") do
-      -- Check validity of = character
+      -- Check validity of '=' character
+      -- when set mps+==:;
       if node ~= nil and key:match("=") then
         local col = 0
         if line_num == curr_line then
@@ -163,18 +164,11 @@ local prev_lonely_pair = function(node, curr_line, curr_col, start_line)
 end
 
 local get_char = function(curr_line, curr_col)
-  local mapped_char = settings.mapping
-
   local node, start_line = get_master_node_range()
-  local pre_node = node:named_descendant_for_range(curr_line - 1, curr_col - 1, curr_line - 1, curr_col - 1)
-
-  if ts_utils.get_next_node(pre_node, true, true) == nil then
-    return mapped_char
-  end
 
   -- Check quote character
   if node ~= nil then
-    local quote_char = get_lonely_quote(pre_node, curr_line, curr_col)
+    local quote_char = get_lonely_quote(node, curr_line, curr_col)
     if quote_char ~= nil then
       return quote_char
     end
@@ -185,7 +179,7 @@ local get_char = function(curr_line, curr_col)
   if prev_lonely ~= nil then
     return prev_lonely
   else
-    return mapped_char
+    return nil
   end
 end
 
@@ -201,20 +195,6 @@ function M.setup(update)
     '<cmd>lua require"close-pairs".try_close()<cr>',
     {noremap = true, silent = true}
   )
-  vim.api.nvim_set_keymap(
-    "i",
-    settings.mapping_original_key,
-    '<cmd>lua require"close-pairs".send_original()<cr>',
-    {noremap = true, silent = true}
-  )
-end
-
-M.send_original = function()
-  local curr_line = vim.api.nvim_win_get_cursor(0)[1]
-  local curr_col = vim.api.nvim_win_get_cursor(0)[2]
-
-  vim.api.nvim_buf_set_text(0, curr_line - 1, curr_col, curr_line - 1, curr_col, {settings.mapping})
-  vim.api.nvim_win_set_cursor(0, {curr_line, curr_col + 1})
 end
 
 M.try_close = function()
