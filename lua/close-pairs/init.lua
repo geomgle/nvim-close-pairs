@@ -7,8 +7,7 @@ local M = {}
 M.inited = false
 
 local settings = {
-  -- In my terminal, Ctrl-<CR> send € key.
-  mapping = "€"
+  mapping = "<C-s>"
 }
 
 local open_pairs_list = {}
