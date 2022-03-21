@@ -3,6 +3,7 @@ local ts_utils = require "nvim-treesitter.ts_utils"
 local M = {}
 
 M.inited = false
+
 local settings = {
   mapping = ";",
   mapping_original_key = "j;"
@@ -64,11 +65,10 @@ M.check_string_node = function(node, curr_line, curr_col)
   end
 end
 
-local get_lonely_quote = function(pre_node, curr_line, curr_col)
+local get_lonely_quote = function(node, curr_line, curr_col)
   -- When in insert mode, ts_utils.get_node_at_cursor() is not working properly.
   -- So we should get a column ahead by selecting from the parent node.
   -- local parent = pre_node:parent()
-  local node = pre_node:named_descendant_for_range(curr_line - 1, curr_col - 1, curr_line - 1, curr_col - 1)
   local curr_type = node:type()
 
   -- Get quote character if the type of current node has abnormal string content.
@@ -163,11 +163,18 @@ local prev_lonely_pair = function(node, curr_line, curr_col, start_line)
 end
 
 local get_char = function(curr_line, curr_col)
+  local mapped_char = settings.mapping
+
   local node, start_line = get_master_node_range()
+  local pre_node = node:named_descendant_for_range(curr_line - 1, curr_col - 1, curr_line - 1, curr_col - 1)
+
+  if ts_utils.get_next_node(pre_node, true, true) == nil then
+    return mapped_char
+  end
 
   -- Check quote character
   if node ~= nil then
-    local quote_char = get_lonely_quote(node, curr_line, curr_col)
+    local quote_char = get_lonely_quote(pre_node, curr_line, curr_col)
     if quote_char ~= nil then
       return quote_char
     end
@@ -178,7 +185,7 @@ local get_char = function(curr_line, curr_col)
   if prev_lonely ~= nil then
     return prev_lonely
   else
-    return ";"
+    return mapped_char
   end
 end
 
@@ -206,7 +213,7 @@ M.send_original = function()
   local curr_line = vim.api.nvim_win_get_cursor(0)[1]
   local curr_col = vim.api.nvim_win_get_cursor(0)[2]
 
-  vim.api.nvim_buf_set_text(0, curr_line - 1, curr_col, curr_line - 1, curr_col, {";"})
+  vim.api.nvim_buf_set_text(0, curr_line - 1, curr_col, curr_line - 1, curr_col, {settings.mapping})
   vim.api.nvim_win_set_cursor(0, {curr_line, curr_col + 1})
 end
 
