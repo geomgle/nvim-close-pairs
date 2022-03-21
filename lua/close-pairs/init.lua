@@ -1,6 +1,6 @@
 local ts_utils = require "nvim-treesitter.ts_utils"
--- local pn = require("utils").print_node
--- local pt = require("utils").print_table
+local pn = require("utils").print_node
+local pt = require("utils").print_table
 
 local M = {}
 
@@ -51,6 +51,7 @@ M.check_string_node = function(node, curr_line, curr_col)
       return nil
     end
     local type = child:type()
+    pn(child, true)
 
     if type:match("string_content") then
       local start_line, start_col, end_line, end_col = child:range()
@@ -59,8 +60,12 @@ M.check_string_node = function(node, curr_line, curr_col)
       if curr_line ~= end_line + 1 or curr_col - 1 ~= end_col then
         return char
       end
-    elseif type:match('["\'`]') and ts_utils.get_previous_node(child, true, true) == nil then
-      return ts_utils.get_node_text(child)[1]
+    elseif type:match('["\'`]') and ts_utils.get_previous_node(child, true, true) ~= nil then
+      local start_line, start_col, end_line, end_col = child:range()
+
+      if curr_line ~= end_line + 1 or curr_col - 1 ~= end_col then
+        return ts_utils.get_node_text(child)[1]
+      end
     end
 
     M.check_string_node(child, curr_line, curr_col)
