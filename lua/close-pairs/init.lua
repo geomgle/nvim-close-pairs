@@ -1,38 +1,74 @@
 local ts_utils = require "nvim-treesitter.ts_utils"
--- local pn = require("utils").print_node
--- local pt = require("utils").print_table
+local pn = require("utils").print_node
+local pt = require("utils").print_table
 
 local M = {}
 
 M.inited = false
 
 local settings = {
-  mapping = "<C-s>"
+  mapping = "<C-j>",
+  default_key = ";"
 }
 
-local open_pairs_list = {}
-local close_pairs_list = {}
+local pairs_list = {}
 
 local init = function()
   local m_pairs = vim.bo.matchpairs
 
   for k, v in m_pairs:gmatch("([^,:]+):([^,:]+)") do
-    open_pairs_list[k] = v
-    close_pairs_list[v] = k
+    pairs_list[k] = v
   end
 
   M.inited = true
 end
 
-local get_master_node_range = function()
-  local node = ts_utils.get_node_at_cursor()
-  if node == nil then
-    local start_line, start_col = 0, 0
-    local end_line = vim.fn.line("$") - 1
-    local end_col = vim.fn.col({end_line + 1, "$"}) - 1
-    return nil, start_line, start_col, end_line, end_col
+local get_line = function(line, start_col, end_col)
+  if start_col == nil then
+    return vim.fn.getline(line)
+  else
+    return vim.fn.getline(line):sub(start_col, end_col)
+  end
+end
+
+local line_content = function(line, start_line, start_col, end_line, end_col)
+  local line_content
+  if line == start_line and line == end_line then
+    line_content = get_line(line, start_col, end_col)
+  elseif line == start_line then
+    line_content = get_line(line, start_col)
+  elseif line == end_line then
+    line_content = get_line(line, 1, end_col)
+  else
+    line_content = get_line(line)
+  end
+  return line_content
+end
+
+M.remove_pairs = function(str)
+  local prev_str = str
+  str = str:gsub("<>", "")
+  str = str:gsub("%(%)", "")
+  str = str:gsub("%{%}", "")
+  str = str:gsub("%[%]", "")
+
+  if prev_str == str then
+    return str
   end
 
+  return M.remove_pairs(str)
+end
+
+local find_lonely_pairs = function(str)
+  str = str:gsub('\\["\'`]', "")
+  str = str:gsub("[%s%-=][<>]", "")
+  str = str:gsub("[<>][%-=]", "")
+  str = str:gsub('[%d%a%s%%%-%~%^.,;:&!?_=+"\'`]', "")
+  str = M.remove_pairs(str)
+  return str
+end
+
+local get_master_node = function(node)
   local parent = node:parent()
   local root = ts_utils.get_root_for_node(node)
 
@@ -41,164 +77,51 @@ local get_master_node_range = function()
     parent = node:parent()
   end
 
-  return node, node:range()
+  return node
 end
 
-M.check_string_node = function(node, curr_line, curr_col)
-  for i = 0, node:child_count() - 1, 1 do
-    local child = node:child(i)
-    if child == nil then
-      return nil
-    end
-    local type = child:type()
+local get_content = function(start_line, start_col, end_line, end_col)
+  local contents = ""
 
-    if type:match("string_content") then
-      local start_line, start_col, end_line, end_col = child:range()
-      local char = string.sub(vim.fn.getline(start_line + 1), start_col, start_col)
+  local line_num = start_line
+  while line_num <= end_line do
+    local line = line_content(line_num, start_line, start_col, end_line, end_col)
+    contents = contents .. line
 
-      if curr_line ~= end_line + 1 or curr_col - 1 ~= end_col then
-        return char
+    line_num = line_num + 1
+  end
+
+  return contents
+end
+
+local divide = function(master, curr_line, curr_col)
+  local m_sl, m_sc, m_el, m_ec = master:range()
+
+  local front_content = get_content(m_sl + 1, m_sc, curr_line, curr_col - 1)
+  local back_content = get_content(curr_line, curr_col + 1, m_el + 1, m_ec)
+
+  return front_content, back_content
+end
+
+M.recur = function(master, curr_line, curr_col)
+  local front_content, back_content = divide(master, curr_line, curr_col)
+  local front = find_lonely_pairs(front_content)
+  local back = find_lonely_pairs(back_content)
+
+  -- print("Front: ", front, "\nBack: ", back)
+  if front ~= nil and front ~= "" then
+    for open in front:reverse():gmatch("(.)") do
+      if back == nil or back == "" then
+        return pairs_list[open]
       end
-    elseif type:match('["\'`]') and ts_utils.get_previous_node(child, true, true) ~= nil then
-      local start_line, start_col, end_line, end_col = child:range()
 
-      if curr_line ~= end_line + 1 or curr_col - 1 ~= end_col then
-        return ts_utils.get_node_text(child)[1]
-      end
-    end
-
-    M.check_string_node(child, curr_line, curr_col)
-  end
-end
-
-local get_lonely_quote = function(pre_node, curr_line, curr_col)
-  -- When in insert mode, ts_utils.get_node_at_cursor() is not working properly.
-  -- So we should get a column ahead by selecting from the parent node.
-  local node = pre_node:named_descendant_for_range(curr_line - 1, curr_col - 1, curr_line - 1, curr_col - 1)
-  local curr_type = node:type()
-
-  local quote = M.check_string_node(node, curr_line, curr_col)
-
-  if quote ~= nil then
-    return quote
-  end
-end
-
-local find_open_pair = function(pairs_count, pairs_list, key)
-  if pairs_list[key] ~= nil then
-    if pairs_count[key] == nil or pairs_count[key] == 0 then
-      return true
-    else
-      pairs_count[key] = pairs_count[key] - 1
-    end
-  end
-  return false
-end
-
-local find_close_pair = function(pairs_count, pairs_list, key)
-  if pairs_list[key] ~= nil then
-    local value = pairs_list[key]
-    if pairs_count[value] == nil then
-      pairs_count[value] = 1
-    else
-      pairs_count[value] = pairs_count[value] + 1
-    end
-  end
-end
-
-local prev_lonely_pair = function(node, curr_line, curr_col, start_line)
-  local line_num = curr_line
-  local pairs_count = {}
-
-  while line_num > start_line do
-    local line = vim.fn.getline(line_num)
-
-    if line_num == curr_line then
-      line = string.sub(line, 1, curr_col)
-    end
-
-    local off = 1
-    for key in line:reverse():gmatch("(.)") do
-      -- Check validity of '=' character
-      -- when set mps+==:;
-      if node ~= nil and key:match("=") then
-        local col = 0
-        if line_num == curr_line then
-          col = curr_col - off
-        else
-          col = vim.fn.col({line_num, "$"}) - 1 - off
-        end
-        local key_node = node:named_descendant_for_range(line_num - 1, col - 1, line_num - 1, col - 1)
-        if key_node:type():match("assign") or key_node:type():match("declar") then
-          goto found
-        else
-          off = off + 1
-          goto continue
+      for close in back:gmatch("(.)") do
+        if pairs_list[open] ~= close then
+          return pairs_list[open]
         end
       end
-
-      -- Check validity of angled brace
-      if node ~= nil and key:match("[<>]") then
-        local col = 0
-        if line_num == curr_line then
-          col = curr_col - off
-        else
-          col = vim.fn.col({line_num, "$"}) - 1 - off
-        end
-        local key_node = node:named_descendant_for_range(line_num - 1, col - 1, line_num - 1, col - 1)
-        if key_node:type() == "binary_expression" or key_node:type() == "string" then
-          off = off + 1
-          goto continue
-        end
-      end
-
-      ::found::
-      local found = find_open_pair(pairs_count, open_pairs_list, key)
-      if found then
-        return open_pairs_list[key]
-      end
-      find_close_pair(pairs_count, close_pairs_list, key)
-
-      off = off + 1
-      ::continue::
-    end
-
-    line_num = line_num - 1
-  end
-end
-
-local get_char = function(curr_line, curr_col)
-  local node, start_line = get_master_node_range()
-
-  -- Check quote character
-  if node ~= nil then
-    local quote_char = get_lonely_quote(node, curr_line, curr_col)
-    if quote_char ~= nil then
-      return quote_char
     end
   end
-
-  -- Check match pair
-  local prev_lonely = prev_lonely_pair(node, curr_line, curr_col, start_line)
-  if prev_lonely ~= nil then
-    return prev_lonely
-  else
-    return nil
-  end
-end
-
-function M.setup(update)
-  if vim.g.close_pairs_loaded then
-    return
-  end
-  vim.g.close_pairs_loaded = true
-  settings = vim.tbl_deep_extend("force", settings, update or {})
-  vim.api.nvim_set_keymap(
-    "i",
-    settings.mapping,
-    '<cmd>lua require"close-pairs".try_close()<cr>',
-    {noremap = true, silent = true}
-  )
 end
 
 M.try_close = function()
@@ -207,14 +130,43 @@ M.try_close = function()
   end
 
   local curr_line = vim.api.nvim_win_get_cursor(0)[1]
-  local curr_col = vim.api.nvim_win_get_cursor(0)[2]
-  local char = get_char(curr_line, curr_col)
-  local next_char = string.sub(vim.fn.getline(curr_line), curr_col + 1, curr_col + 1)
+  local curr_col = vim.api.nvim_win_get_cursor(0)[2] + 1
+  local curr_node = ts_utils.get_node_at_cursor(0)
+  local node = curr_node:descendant_for_range(curr_line - 1, curr_col - 2, curr_line - 1, curr_col - 2)
+  local master = get_master_node(node)
 
-  if char ~= next_char then
-    vim.api.nvim_buf_set_text(0, curr_line - 1, curr_col, curr_line - 1, curr_col, {char})
+  local char
+  if node == nil then
+    print("node is nil!")
+    return nil
+  elseif node:type() == "string_content" then
+    char = ts_utils.get_node_text(node:prev_sibling())[1]
+  else
+    char = M.recur(master, curr_line, curr_col)
   end
-  vim.api.nvim_win_set_cursor(0, {curr_line, curr_col + 1})
+
+  local next_char = get_line(curr_line, curr_col, curr_col)
+
+  if char == nil then
+    vim.api.nvim_buf_set_text(0, curr_line - 1, curr_col - 1, curr_line - 1, curr_col - 1, {settings.default_key})
+  elseif char ~= next_char then
+    vim.api.nvim_buf_set_text(0, curr_line - 1, curr_col - 1, curr_line - 1, curr_col - 1, {char})
+  end
+  vim.api.nvim_win_set_cursor(0, {curr_line, curr_col})
+end
+
+function M.setup()
+  if vim.g.close_pairs_loaded then
+    return
+  end
+  vim.g.close_pairs_loaded = true
+
+  vim.api.nvim_set_keymap(
+    "i",
+    settings.mapping,
+    '<cmd>lua require"close-pairs".try_close()<cr>',
+    {noremap = true, silent = true}
+  )
 end
 
 return M
