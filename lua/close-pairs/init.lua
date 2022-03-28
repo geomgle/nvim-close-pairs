@@ -124,6 +124,25 @@ M.recur = function(master, curr_line, curr_col)
   end
 end
 
+local get_char = function(curr_line, curr_col)
+  local curr_node = ts_utils.get_node_at_cursor(0)
+  if curr_node == nil then
+    return nil
+  end
+
+  local node = curr_node:descendant_for_range(curr_line - 1, curr_col - 2, curr_line - 1, curr_col - 2)
+  local master = get_master_node(node)
+
+  local char
+  if node:type() == "string_content" then
+    char = ts_utils.get_node_text(node:prev_sibling())[1]
+  else
+    char = M.recur(master, curr_line, curr_col)
+  end
+
+  return char
+end
+
 M.try_close = function()
   if not M.inited then
     init()
@@ -131,20 +150,8 @@ M.try_close = function()
 
   local curr_line = vim.api.nvim_win_get_cursor(0)[1]
   local curr_col = vim.api.nvim_win_get_cursor(0)[2] + 1
-  local curr_node = ts_utils.get_node_at_cursor(0)
-  local node = curr_node:descendant_for_range(curr_line - 1, curr_col - 2, curr_line - 1, curr_col - 2)
-  local master = get_master_node(node)
 
-  local char
-  if node == nil then
-    print("node is nil!")
-    return nil
-  elseif node:type() == "string_content" then
-    char = ts_utils.get_node_text(node:prev_sibling())[1]
-  else
-    char = M.recur(master, curr_line, curr_col)
-  end
-
+  local char = get_char(curr_line, curr_col)
   local next_char = get_line(curr_line, curr_col, curr_col)
 
   if char == nil then
