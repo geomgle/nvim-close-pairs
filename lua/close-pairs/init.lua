@@ -63,7 +63,7 @@ local find_lonely_pairs = function(str)
   str = str:gsub('\\["\'`]', "")
   str = str:gsub("[%s%-=][<>]", "")
   str = str:gsub("[<>][%-=]", "")
-  str = str:gsub('[%d%a%s%%%-%~%^.,;:&!?_=+/"\'`]', "")
+  str = str:gsub('[%d%a%s%%%-%~%^.,;:&!?*_=+/"\'`]', "")
   str = M.remove_pairs(str)
   return str
 end
@@ -105,20 +105,16 @@ end
 
 M.recur = function(master, curr_line, curr_col)
   local front_content, back_content = divide(master, curr_line, curr_col)
-  local front = find_lonely_pairs(front_content)
+  local front = find_lonely_pairs(front_content):reverse()
   local back = find_lonely_pairs(back_content)
 
-  print("Front: ", front, "\nBack: ", back)
+  -- print("Front: ", front, "\nBack: ", back)
   if front ~= nil and front ~= "" then
-    for open in front:reverse():gmatch("(.)") do
-      if back == nil or back == "" then
-        return pairs_list[open]
-      end
-
-      for close in back:gmatch("(.)") do
-        if pairs_list[open] ~= close then
-          return pairs_list[open]
-        end
+    for i = 1, #front, 1 do
+      local f_char = front:sub(i, i)
+      local b_char = back:sub(i, i)
+      if pairs_list[f_char] ~= b_char then
+        return pairs_list[f_char]
       end
     end
   end
@@ -153,7 +149,7 @@ M.try_close = function()
 
   local char = get_char(curr_line, curr_col)
   local next_char = get_line(curr_line, curr_col, curr_col)
-  print(char, next_char)
+  -- print(char, next_char)
 
   if char == nil then
     vim.api.nvim_buf_set_text(0, curr_line - 1, curr_col - 1, curr_line - 1, curr_col - 1, {settings.default_key})
