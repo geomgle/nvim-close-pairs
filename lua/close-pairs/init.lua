@@ -7,7 +7,7 @@ local M = {}
 M.inited = false
 
 local settings = {
-  mapping = "<C-j>",
+  mapping = ";",
   default_key = ";"
 }
 
@@ -155,6 +155,14 @@ M.try_close = function()
   vim.api.nvim_win_set_cursor(0, {curr_line, curr_col})
 end
 
+M.send_original = function()
+  local curr_line = vim.api.nvim_win_get_cursor(0)[1]
+  local curr_col = vim.api.nvim_win_get_cursor(0)[2] + 1
+
+  vim.api.nvim_buf_set_text(0, curr_line - 1, curr_col - 1, curr_line - 1, curr_col - 1, {settings.mapping})
+  vim.api.nvim_win_set_cursor(0, {curr_line, curr_col})
+end
+
 function M.setup()
   if vim.g.close_pairs_loaded then
     return
@@ -165,6 +173,12 @@ function M.setup()
     "i",
     settings.mapping,
     '<cmd>lua require"close-pairs".try_close()<cr>',
+    {noremap = true, silent = true}
+  )
+  vim.api.nvim_set_keymap(
+    "i",
+    "j" .. settings.mapping,
+    '<cmd>lua require"close-pairs".send_original()<cr>',
     {noremap = true, silent = true}
   )
 end
