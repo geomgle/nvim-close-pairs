@@ -63,7 +63,7 @@ local find_lonely_pairs = function(str)
   str = str:gsub('\\["\'`]', "")
   str = str:gsub("[%s%-=][<>]", "")
   str = str:gsub("[<>][%-=]", "")
-  str = str:gsub('[%d%a%s%%%-%~%^.,;:&!?_=+"\'`]', "")
+  str = str:gsub('[%d%a%s%%%-%~%^.,;:&!?_=+/"\'`]', "")
   str = M.remove_pairs(str)
   return str
 end
@@ -108,7 +108,7 @@ M.recur = function(master, curr_line, curr_col)
   local front = find_lonely_pairs(front_content)
   local back = find_lonely_pairs(back_content)
 
-  -- print("Front: ", front, "\nBack: ", back)
+  print("Front: ", front, "\nBack: ", back)
   if front ~= nil and front ~= "" then
     for open in front:reverse():gmatch("(.)") do
       if back == nil or back == "" then
@@ -153,6 +153,7 @@ M.try_close = function()
 
   local char = get_char(curr_line, curr_col)
   local next_char = get_line(curr_line, curr_col, curr_col)
+  print(char, next_char)
 
   if char == nil then
     vim.api.nvim_buf_set_text(0, curr_line - 1, curr_col - 1, curr_line - 1, curr_col - 1, {settings.default_key})
