@@ -116,6 +116,9 @@ M.recur = function(master, curr_line, curr_col)
   local front_content, back_content = cut_master_by_cursor(master, curr_line, curr_col)
   local front = find_lonely_pairs(front_content):reverse()
   local back = find_lonely_pairs(back_content)
+  if #front > #back then
+    back = string.rep(" ", #front - #back) .. back
+  end
 
   -- print("Front: ", front, "\nBack: ", back)
   if front ~= nil and front ~= "" then
