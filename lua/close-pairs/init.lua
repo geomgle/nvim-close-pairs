@@ -72,7 +72,7 @@ local find_lonely_pairs = function(str)
   else
     str = str:gsub("[<>]", "")
   end
-  str = str:gsub('[%d%a%s%%%-%~%^\\.,;:&!?@*#$_=+/"\'`]', "")
+  str = str:gsub("[^%[%]%{%}%(%)<>]", "")
   str = M.remove_pairs(str)
   return str
 end
