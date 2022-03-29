@@ -47,7 +47,9 @@ end
 
 M.remove_pairs = function(str)
   local prev_str = str
-  str = str:gsub("<>", "")
+  if pairs_list["<"] ~= nil then
+    str = str:gsub("<>", "")
+  end
   str = str:gsub("%(%)", "")
   str = str:gsub("%{%}", "")
   str = str:gsub("%[%]", "")
@@ -61,9 +63,16 @@ end
 
 local find_lonely_pairs = function(str)
   str = str:gsub('\\["\'`]', "")
-  str = str:gsub("[%s%-=][<>]", "")
-  str = str:gsub("[<>][%-=]", "")
-  str = str:gsub('[%d%a%s%%%-%~%^.,;:&!?*_=+/"\'`]', "")
+  str = str:gsub("%s[<>]%s", "")
+  if pairs_list["<"] ~= nil then
+    str = str:gsub("%s[%-=][<>]%s", "")
+    str = str:gsub("%s[<>][%-=]%s", "")
+    str = str:gsub("%s+>>", "")
+    str = str:gsub("<<%s+", "")
+  else
+    str = str:gsub("[<>]", "")
+  end
+  str = str:gsub('[%d%a%s%%%-%~%^\\.,;:&!?@*#$_=+/"\'`]', "")
   str = M.remove_pairs(str)
   return str
 end
@@ -94,7 +103,7 @@ local get_content = function(start_line, start_col, end_line, end_col)
   return contents
 end
 
-local divide = function(master, curr_line, curr_col)
+local cut_master_by_cursor = function(master, curr_line, curr_col)
   local m_sl, m_sc, m_el, m_ec = master:range()
 
   local front_content = get_content(m_sl + 1, m_sc, curr_line, curr_col - 1)
@@ -104,7 +113,7 @@ local divide = function(master, curr_line, curr_col)
 end
 
 M.recur = function(master, curr_line, curr_col)
-  local front_content, back_content = divide(master, curr_line, curr_col)
+  local front_content, back_content = cut_master_by_cursor(master, curr_line, curr_col)
   local front = find_lonely_pairs(front_content):reverse()
   local back = find_lonely_pairs(back_content)
 
@@ -120,6 +129,18 @@ M.recur = function(master, curr_line, curr_col)
   end
 end
 
+M.find_last_pair = function(curr_line, curr_col)
+  local line = get_line(curr_line, 1, curr_col):reverse()
+  local pair = line:find("[%[%(%{]")
+  if pair == nil then
+    curr_line = curr_line - 1
+    curr_col = vim.fn.col({curr_line, "$"})
+    return M.find_last_pair(curr_line)
+  else
+    return pairs_list[line:sub(pair, pair)]
+  end
+end
+
 local get_char = function(curr_line, curr_col)
   local curr_node = ts_utils.get_node_at_cursor(0)
   if curr_node == nil then
@@ -130,8 +151,16 @@ local get_char = function(curr_line, curr_col)
   local master = get_master_node(node)
 
   local char
-  if node:type() == "string_content" then
-    char = ts_utils.get_node_text(node:prev_sibling())[1]
+  local type = node:type()
+  if type == "string_content" then
+    -- char = ts_utils.get_node_text(node:prev_sibling())[1]
+    local start_line, start_col = node:range()
+    char = get_line(start_line + 1, start_col, start_col)
+  elseif type == "string_literal" then
+    char = ts_utils.get_node_text(node:child(0))[1]
+  elseif type == "ERROR" then
+    char = M.find_last_pair(curr_line, curr_col)
+    return char
   else
     char = M.recur(master, curr_line, curr_col)
   end
