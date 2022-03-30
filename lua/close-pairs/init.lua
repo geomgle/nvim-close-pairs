@@ -161,7 +161,7 @@ local get_char = function(curr_line, curr_col)
   if type == "string_content" then
     local start_line, start_col = node:range()
     char = get_line(start_line + 1, start_col, start_col)
-  elseif type:match("string") then
+  elseif type:match("string") and type ~= "string_end" then
     char = ts_utils.get_node_text(node:child(0))[1]
   elseif type == "ERROR" then
     char = M.find_last_pair(curr_line, curr_col)
