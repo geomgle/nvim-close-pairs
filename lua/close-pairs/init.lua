@@ -8,7 +8,7 @@ M.inited = false
 
 local settings = {
   mapping = ";",
-  default_key = ";"
+  send_original_key = "j;"
 }
 
 local pairs_list = {}
@@ -45,38 +45,6 @@ local line_content = function(line, start_line, start_col, end_line, end_col)
   return line_content
 end
 
-M.remove_pairs = function(str)
-  local prev_str = str
-  if pairs_list["<"] ~= nil then
-    str = str:gsub("<>", "")
-  end
-  str = str:gsub("%(%)", "")
-  str = str:gsub("%{%}", "")
-  str = str:gsub("%[%]", "")
-
-  if prev_str == str then
-    return str
-  end
-
-  return M.remove_pairs(str)
-end
-
-local find_lonely_pairs = function(str)
-  str = str:gsub('\\["\'`]', "")
-  str = str:gsub("%s[<>]%s", "")
-  if pairs_list["<"] ~= nil then
-    str = str:gsub("%s[%-=][<>]%s", "")
-    str = str:gsub("%s[<>][%-=]%s", "")
-    str = str:gsub("%s+>>", "")
-    str = str:gsub("<<%s+", "")
-  else
-    str = str:gsub("[<>]", "")
-  end
-  str = str:gsub("[^%[%]%{%}%(%)<>]", "")
-  str = M.remove_pairs(str)
-  return str
-end
-
 local get_master_node = function(node)
   local parent = node:parent()
   local root = ts_utils.get_root_for_node(node)
@@ -103,18 +71,6 @@ local get_content = function(start_line, start_col, end_line, end_col)
   return contents
 end
 
-M.find_last_pair = function(curr_line, curr_col)
-  local line = get_line(curr_line, 1, curr_col):reverse()
-  local pair = line:find("[%[%(%{]")
-  if pair == nil then
-    curr_line = curr_line - 1
-    curr_col = vim.fn.col({curr_line, "$"})
-    return M.find_last_pair(curr_line)
-  else
-    return pairs_list[line:sub(pair, pair)]
-  end
-end
-
 local cut_master_by_cursor = function(master, curr_line, curr_col)
   local m_sl, m_sc, m_el, m_ec = master:range()
 
@@ -124,10 +80,42 @@ local cut_master_by_cursor = function(master, curr_line, curr_col)
   return front_content, back_content
 end
 
-M.recur = function(master, curr_line, curr_col)
+M.remove_coupled_pairs = function(str)
+  local prev_str = str
+  if pairs_list["<"] ~= nil then
+    str = str:gsub("<>", "")
+  end
+  str = str:gsub("%(%)", "")
+  str = str:gsub("%{%}", "")
+  str = str:gsub("%[%]", "")
+
+  if prev_str == str then
+    return str
+  end
+
+  return M.remove_coupled_pairs(str)
+end
+
+local find_pairs = function(str)
+  str = str:gsub('\\["\'`]', "")
+  str = str:gsub("%s[<>]%s", "")
+  if pairs_list["<"] ~= nil then
+    str = str:gsub("%s[%-=][<>]%s", "")
+    str = str:gsub("%s[<>][%-=]%s", "")
+    str = str:gsub("%s+>>", "")
+    str = str:gsub("<<%s+", "")
+  else
+    str = str:gsub("[<>]", "")
+  end
+  str = str:gsub("[^%[%]%{%}%(%)<>]", "")
+  str = M.remove_coupled_pairs(str)
+  return str
+end
+
+local find_lonely_pair = function(master, curr_line, curr_col)
   local front_content, back_content = cut_master_by_cursor(master, curr_line, curr_col)
-  local front = find_lonely_pairs(front_content):reverse()
-  local back = find_lonely_pairs(back_content)
+  local front = find_pairs(front_content):reverse()
+  local back = find_pairs(back_content)
   if #front > #back then
     back = string.rep(" ", #front - #back) .. back
   end
@@ -141,6 +129,18 @@ M.recur = function(master, curr_line, curr_col)
         return pairs_list[f_char]
       end
     end
+  end
+end
+
+M.find_last_pair = function(curr_line, curr_col)
+  local line = get_line(curr_line, 1, curr_col):reverse()
+  local pair = line:find("[%[%(%{]")
+  if pair == nil then
+    curr_line = curr_line - 1
+    curr_col = vim.fn.col({curr_line, "$"})
+    return M.find_last_pair(curr_line)
+  else
+    return pairs_list[line:sub(pair, pair)]
   end
 end
 
@@ -167,7 +167,7 @@ local get_char = function(curr_line, curr_col)
     char = M.find_last_pair(curr_line, curr_col)
     return char
   else
-    char = M.recur(master, curr_line, curr_col)
+    char = find_lonely_pair(master, curr_line, curr_col)
   end
 
   return char
@@ -186,7 +186,7 @@ M.try_close = function()
   -- print(char, next_char)
 
   if char == nil then
-    vim.api.nvim_buf_set_text(0, curr_line - 1, curr_col - 1, curr_line - 1, curr_col - 1, {settings.default_key})
+    vim.api.nvim_buf_set_text(0, curr_line - 1, curr_col - 1, curr_line - 1, curr_col - 1, {settings.mapping})
   elseif char ~= next_char then
     vim.api.nvim_buf_set_text(0, curr_line - 1, curr_col - 1, curr_line - 1, curr_col - 1, {char})
   end
@@ -213,12 +213,14 @@ function M.setup()
     '<cmd>lua require"close-pairs".try_close()<cr>',
     {noremap = true, silent = true}
   )
-  vim.api.nvim_set_keymap(
-    "i",
-    "j" .. settings.mapping,
-    '<cmd>lua require"close-pairs".send_original()<cr>',
-    {noremap = true, silent = true}
-  )
+  if settings.send_original_key ~= nil then
+    vim.api.nvim_set_keymap(
+      "i",
+      settings.send_original_key,
+      '<cmd>lua require"close-pairs".send_original()<cr>',
+      {noremap = true, silent = true}
+    )
+  end
 end
 
 return M
