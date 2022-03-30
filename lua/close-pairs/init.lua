@@ -1,6 +1,6 @@
 local ts_utils = require "nvim-treesitter.ts_utils"
-local pn = require("utils").print_node
-local pt = require("utils").print_table
+-- local pn = require("utils").print_node
+-- local pt = require("utils").print_table
 
 local M = {}
 
@@ -103,6 +103,18 @@ local get_content = function(start_line, start_col, end_line, end_col)
   return contents
 end
 
+M.find_last_pair = function(curr_line, curr_col)
+  local line = get_line(curr_line, 1, curr_col):reverse()
+  local pair = line:find("[%[%(%{]")
+  if pair == nil then
+    curr_line = curr_line - 1
+    curr_col = vim.fn.col({curr_line, "$"})
+    return M.find_last_pair(curr_line)
+  else
+    return pairs_list[line:sub(pair, pair)]
+  end
+end
+
 local cut_master_by_cursor = function(master, curr_line, curr_col)
   local m_sl, m_sc, m_el, m_ec = master:range()
 
@@ -132,34 +144,24 @@ M.recur = function(master, curr_line, curr_col)
   end
 end
 
-M.find_last_pair = function(curr_line, curr_col)
-  local line = get_line(curr_line, 1, curr_col):reverse()
-  local pair = line:find("[%[%(%{]")
-  if pair == nil then
-    curr_line = curr_line - 1
-    curr_col = vim.fn.col({curr_line, "$"})
-    return M.find_last_pair(curr_line)
-  else
-    return pairs_list[line:sub(pair, pair)]
-  end
-end
-
 local get_char = function(curr_line, curr_col)
+  local node
   local curr_node = ts_utils.get_node_at_cursor(0)
   if curr_node == nil then
     return nil
+  else
+    node = curr_node:descendant_for_range(curr_line - 1, curr_col - 2, curr_line - 1, curr_col - 2)
   end
 
-  local node = curr_node:descendant_for_range(curr_line - 1, curr_col - 2, curr_line - 1, curr_col - 2)
   local master = get_master_node(node)
+  -- pn(node, true)
 
   local char
   local type = node:type()
   if type == "string_content" then
-    -- char = ts_utils.get_node_text(node:prev_sibling())[1]
     local start_line, start_col = node:range()
     char = get_line(start_line + 1, start_col, start_col)
-  elseif type == "string_literal" then
+  elseif type:match("string") then
     char = ts_utils.get_node_text(node:child(0))[1]
   elseif type == "ERROR" then
     char = M.find_last_pair(curr_line, curr_col)
