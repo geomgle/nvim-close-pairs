@@ -45,7 +45,7 @@ local line_content = function(line, start_line, start_col, end_line, end_col)
   return line_content
 end
 
-local get_master_node = function(node)
+local get_master_range = function(node)
   local parent = node:parent()
   local root = ts_utils.get_root_for_node(node)
 
@@ -54,7 +54,13 @@ local get_master_node = function(node)
     parent = node:parent()
   end
 
-  return node
+  local start_line, start_col, end_line, end_col = node:range()
+  local p_start = vim.fn.line("'{")
+  if start_line > p_start then
+    return p_start, 0, end_line, end_col
+  else
+    return start_line, start_col, end_line, end_col
+  end
 end
 
 local get_content = function(start_line, start_col, end_line, end_col)
@@ -71,8 +77,8 @@ local get_content = function(start_line, start_col, end_line, end_col)
   return contents
 end
 
-local cut_master_by_cursor = function(master, curr_line, curr_col)
-  local m_sl, m_sc, m_el, m_ec = master:range()
+local cut_master_by_cursor = function(get_master_fn, node, curr_line, curr_col)
+  local m_sl, m_sc, m_el, m_ec = get_master_fn(node)
 
   local front_content = get_content(m_sl + 1, m_sc, curr_line, curr_col - 1)
   local back_content = get_content(curr_line, curr_col + 1, m_el + 1, m_ec)
@@ -112,8 +118,8 @@ local find_pairs = function(str)
   return str
 end
 
-local find_lonely_pair = function(master, curr_line, curr_col)
-  local front_content, back_content = cut_master_by_cursor(master, curr_line, curr_col)
+local find_lonely_pair = function(master_range_fn, node, curr_line, curr_col)
+  local front_content, back_content = cut_master_by_cursor(master_range_fn, node, curr_line, curr_col)
   local front = find_pairs(front_content):reverse()
   local back = find_pairs(back_content)
   if #front > #back then
@@ -148,26 +154,28 @@ local get_char = function(curr_line, curr_col)
   local node
   local curr_node = ts_utils.get_node_at_cursor(0)
   if curr_node == nil then
+    print("Node at cursor is nil")
     return nil
   else
     node = curr_node:descendant_for_range(curr_line - 1, curr_col - 2, curr_line - 1, curr_col - 2)
   end
 
-  local master = get_master_node(node)
   -- pn(node, true)
+  -- print(get_master_range(node))
 
   local char
   local type = node:type()
-  if type == "string_content" then
-    local start_line, start_col = node:range()
-    char = get_line(start_line + 1, start_col, start_col)
+  local start_line, start_col = node:range()
+  local front_char = get_line(start_line + 1, start_col, start_col)
+  if (type == "string_content") or (type:match("identifier") and front_char:match('[\'"`]')) then
+    char = front_char
   elseif type:match("string") and type ~= "string_end" then
+    -- elseif type == "ERROR" then
+    -- char = M.find_last_pair(curr_line, curr_col)
+    -- return char
     char = ts_utils.get_node_text(node:child(0))[1]
-  elseif type == "ERROR" then
-    char = M.find_last_pair(curr_line, curr_col)
-    return char
   else
-    char = find_lonely_pair(master, curr_line, curr_col)
+    char = find_lonely_pair(get_master_range, node, curr_line, curr_col)
   end
 
   return char
