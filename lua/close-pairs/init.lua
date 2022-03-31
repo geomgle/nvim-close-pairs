@@ -1,6 +1,6 @@
 local ts_utils = require "nvim-treesitter.ts_utils"
--- local pn = require("utils").print_node
--- local pt = require("utils").print_table
+local pn = require("utils").print_node
+local pt = require("utils").print_table
 
 local M = {}
 
@@ -138,15 +138,15 @@ local find_lonely_pair = function(master_range_fn, node, curr_line, curr_col)
   end
 end
 
-M.find_last_pair = function(curr_line, curr_col)
+M.find_last_quote = function(curr_line, curr_col)
   local line = get_line(curr_line, 1, curr_col):reverse()
-  local pair = line:find("[%[%(%{]")
-  if pair == nil then
+  local quote = line:find('["\'`]')
+  if quote == nil then
     curr_line = curr_line - 1
     curr_col = vim.fn.col({curr_line, "$"})
-    return M.find_last_pair(curr_line)
+    return M.find_last_quote(curr_line)
   else
-    return pairs_list[line:sub(pair, pair)]
+    return line:sub(quote, quote)
   end
 end
 
@@ -167,13 +167,12 @@ local get_char = function(curr_line, curr_col)
   local type = node:type()
   local start_line, start_col = node:range()
   local front_char = get_line(start_line + 1, start_col, start_col)
-  if (type == "string_content") or (type:match("identifier") and front_char:match('[\'"`]')) then
+  if type == "string_content" then
     char = front_char
   elseif type:match("string") and type ~= "string_end" then
-    -- elseif type == "ERROR" then
-    -- char = M.find_last_pair(curr_line, curr_col)
-    -- return char
     char = ts_utils.get_node_text(node:child(0))[1]
+  elseif type:match("identifier") then
+    char = M.find_last_quote(curr_line, curr_col)
   else
     char = find_lonely_pair(get_master_range, node, curr_line, curr_col)
   end
