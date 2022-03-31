@@ -145,9 +145,13 @@ M.find_last_thing = function(curr_line, curr_col)
   if quote == nil then
     local pair = line:find("[%[%{%(]")
     if pair == nil then
-      curr_line = curr_line - 1
-      curr_col = vim.fn.col({curr_line, "$"})
-      return M.find_last_thing(curr_line)
+      if curr_line == 1 then
+        return nil
+      else
+        curr_line = curr_line - 1
+        curr_col = vim.fn.col({curr_line, "$"})
+        return M.find_last_thing(curr_line, curr_col)
+      end
     else
       return pairs_list[line:sub(pair, pair)]
     end
