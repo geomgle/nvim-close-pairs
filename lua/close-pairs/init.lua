@@ -55,7 +55,7 @@ local get_master_range = function(node)
   end
 
   local start_line, start_col, end_line, end_col = node:range()
-  local p_start = vim.fn.line("'{")
+  local p_start = vim.fn.search("^\\S", "b")
   if start_line > p_start then
     return p_start, 0, end_line, end_col
   else
@@ -104,16 +104,18 @@ end
 
 local find_pairs = function(str)
   str = str:gsub('\\["\'`]', "")
-  str = str:gsub("%s[<>]%s", "")
   if pairs_list["<"] ~= nil then
-    str = str:gsub("%s[%-=][<>]%s", "")
-    str = str:gsub("%s[<>][%-=]%s", "")
+    str = str:gsub("[%-=][<>]", "")
+    str = str:gsub("[<>][%-=]", "")
     str = str:gsub("%s+>>", "")
     str = str:gsub("<<%s+", "")
+    str = str:gsub("%s[<>]", "")
+    str = str:gsub("[<]%s", "")
+    str = str:gsub("[^%[%]%{%}%(%)<>]", "")
   else
     str = str:gsub("[<>]", "")
+    str = str:gsub("[^%[%]%{%}%(%)]", "")
   end
-  str = str:gsub("[^%[%]%{%}%(%)<>]", "")
   str = M.remove_coupled_pairs(str)
   return str
 end
@@ -140,23 +142,22 @@ end
 
 M.find_last_thing = function(curr_line, curr_col)
   local line = get_line(curr_line, 1, curr_col):reverse()
-  local quote = line:gsub('["\'`]\\', ""):find('["\'`]')
+  local char = line:gsub('["\'`]\\', ""):match('[%[%{%("\'`]')
 
-  if quote == nil then
-    local pair = line:find("[%[%{%(]")
-    if pair == nil then
-      if curr_line == 1 then
-        return nil
-      else
-        curr_line = curr_line - 1
-        curr_col = vim.fn.col({curr_line, "$"})
-        return M.find_last_thing(curr_line, curr_col)
-      end
+  if char == nil then
+    if curr_line == 1 then
+      return nil
     else
-      return pairs_list[line:sub(pair, pair)]
+      curr_line = curr_line - 1
+      curr_col = vim.fn.col({curr_line, "$"})
+      return M.find_last_thing(curr_line, curr_col)
     end
   else
-    return line:sub(quote, quote)
+    if char:match('["\'`]') then
+      return char
+    elseif char:match("[%[%{%(]") then
+      return pairs_list[char]
+    end
   end
 end
 
@@ -181,6 +182,8 @@ local get_char = function(curr_line, curr_col)
     char = front_char
   elseif type:match("string") and type ~= "string_end" then
     char = ts_utils.get_node_text(node:child(0))[1]
+  elseif type:match('^["\'`]$') and node:prev_sibling():type() ~= type then
+    char = type
   elseif type:match("identifier") then
     char = M.find_last_thing(curr_line, curr_col)
   else
@@ -200,7 +203,6 @@ M.try_close = function()
 
   local char = get_char(curr_line, curr_col)
   local next_char = get_line(curr_line, curr_col, curr_col)
-  -- print(char, next_char)
 
   if char == nil then
     vim.api.nvim_buf_set_text(0, curr_line - 1, curr_col - 1, curr_line - 1, curr_col - 1, {settings.mapping})
